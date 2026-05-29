@@ -87,17 +87,20 @@ class RL_test_vote(object):
             action_record=list()
             perc_record=list()
             for step in range(self.steps):
+                # prepare current state
                 info_perfect = torch.FloatTensor(self.current_state).to(self.device).unsqueeze(0)*0.001#1*region_num*8
 
-                L_rebuild, L_h0 = self.L_RNN(info_perfect[:,:,3].unsqueeze(2).permute(0,2,1), L_h0,is_eval=True)
+                L_rebuild, L_h0 = self.L_RNN(info_perfect[:,:,3].unsqueeze(2).permute(0,2,1), L_h0,is_eval=True) # rebuild latent state L
                 L_rebuild = L_rebuild.clamp_min(0).round()
-                Iut_rebuild, Iut_h0 = self.Iut_RNN(info_perfect[:,:, 3].unsqueeze(2).permute(0, 2, 1), Iut_h0, is_eval=True)
+                Iut_rebuild, Iut_h0 = self.Iut_RNN(info_perfect[:,:, 3].unsqueeze(2).permute(0, 2, 1), Iut_h0, is_eval=True) # rebuilt Iut
                 Iut_rebuild = Iut_rebuild.clamp_min(0).round()
-                R_rebuild, R_h0 = self.R_RNN(info_perfect[:,:, -1].unsqueeze(2).permute(0, 2, 1), R_h0, is_eval=True)
+                R_rebuild, R_h0 = self.R_RNN(info_perfect[:,:, -1].unsqueeze(2).permute(0, 2, 1), R_h0, is_eval=True) #rebuild R from deaths D
                 R_rebuild = R_rebuild.clamp_min(0).round()
 
+                # 6-feature state for RL
                 info_rebuild = torch.cat((L_rebuild.permute(0,2,1), Iut_rebuild.permute(0,2,1), info_perfect[:,:, 3].unsqueeze(2), info_perfect[:,:, 5].unsqueeze(2), R_rebuild.permute(0,2,1), info_perfect[:,:, -1].unsqueeze(2)), dim=2)*1000
 
+                # Discrete-action voting
                 bed_action_count=np.zeros(7,dtype=int)
                 mask_action_count=np.zeros(7,dtype=int)
                 for i in range(self.model_number):
@@ -111,6 +114,7 @@ class RL_test_vote(object):
                 mask_action=np.argmax(mask_action_count)
                 action_record.append([bed_action,mask_action])
 
+                # Continuous-action averaging
                 bed_perc_list=list()
                 mask_perc_list=list()
                 for i in range(self.model_number):
@@ -122,7 +126,8 @@ class RL_test_vote(object):
                 bed_perc=np.mean(np.array(bed_perc_list))
                 mask_perc=np.mean(np.array(mask_perc_list))
                 perc_record.append([bed_perc,mask_perc])
-
+                
+                # run simulator
                 self.next_state, _ = self.simulator.simulate(sim_type='Policy_a', interval=self.interval, bed_total=self.bed_total, bed_action=bed_action, bed_satisfy_perc=bed_perc, mask_on=True, mask_total=self.mask_total, mask_quality=self.mask_quality, mask_lasting=self.mask_lasting, mask_action=mask_action, mask_satisfy_perc=mask_perc, is_save=True, save_time=step)
 
                 print('Testing:{}/{}\n'.format(step+1,self.steps))

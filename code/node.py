@@ -63,23 +63,28 @@ class node:
 
     def step(self,mask_number,mask_quality):
         if (self.susceptible + self.latent + self.infected_ut + self.infected_t + self.infected_asymptomatic + self.in_hospital + self.recovered > 0):
+            # compute mask factor
             mask_factor = 1 - np.clip(mask_number / (self.susceptible + self.latent + self.infected_ut + self.infected_t + self.infected_asymptomatic + self.in_hospital + self.recovered), 0, 1) * mask_quality
+            # Compute force of infection from infected, asymptomatic, and latent populations
             lambda_j = ((self.infected_ut +self.infected_t + self.infected_asymptomatic * r_a + self.latent * r_L) / (self.susceptible + self.latent + self.infected_ut + self.infected_t + self.infected_asymptomatic + self.in_hospital + self.recovered)) * beta * mask_factor
+            #Compute force of infection from infected, asymptomatic, and latent populations.
             susceptible_to_latent, __ = np.random.multinomial(self.susceptible, [lambda_j, 1])
             self.susceptible -= susceptible_to_latent
             self.latent += susceptible_to_latent
 
+            # Sample latent → infected untested or asymptomatic.
             latent_to_infected, latent_to_Ia, __ = np.random.multinomial(self.latent, [L_I, L_Ia, 1])
             self.infected_ut += latent_to_infected
             self.infected_asymptomatic += latent_to_Ia
             self.latent -= (latent_to_Ia + latent_to_infected)
 
             prob = I_h
-
+            # Sample infected untested → tested.
             infected_ut_to_t, __ = np.random.multinomial(self.infected_ut, [prob, 1])
             self.infected_ut -= infected_ut_to_t
             self.infected_t += infected_ut_to_t
 
+            # Sample infected/tested/asymptomatic/hospitalized → recovered or dead.
             infected_to_death, infected_to_recovered, __ = np.random.multinomial(self.infected_ut, [I_D, I_R, 1])
             self.death += infected_to_death
             self.recovered += infected_to_recovered

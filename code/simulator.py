@@ -11,15 +11,15 @@ class simulator(object):
 
         #load data
         print('Loading dynamic pattern...')
-        with open(os.path.join('../data',self.city,'prob.json'), 'r') as f:
+        with open(os.path.join('../data',self.city,'prob.json'), 'r') as f: # mobility probabilities
             self.prob = np.array(json.load(f))
         print('Down!')
         print('Loading population data...')
-        with open(os.path.join('../data',self.city,'flow.json'), 'r') as f:
+        with open(os.path.join('../data',self.city,'flow.json'), 'r') as f: # relative strength of population flow in each region
             self.flow = np.array(json.load(f))
-        with open(os.path.join('../data',self.city,'dense.json'), 'r') as f:
+        with open(os.path.join('../data',self.city,'dense.json'), 'r') as f: # relative population density in each region
             self.dense = np.array(json.load(f))
-        with open(os.path.join('../data',self.city,'pop_region.json'), 'r') as f:
+        with open(os.path.join('../data',self.city,'pop_region.json'), 'r') as f: #the population size
             self.pop = np.array(json.load(f))
         print('Down!')
 
@@ -28,6 +28,7 @@ class simulator(object):
         self.nodes = list()
         self.full = False
 
+        # Sets self.parameters to seven binary combinations of infection, flow, and density features. These correspond to the 7 discrete ranking actions.
         self.parameters = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]]
 
     def reset(self, state):  # state:region_num*8
@@ -46,6 +47,7 @@ class simulator(object):
         print('Down!')
 
     def statistic(self):
+        # compute city-wide totals, only for summary and debugging
         S = 0
         L = 0
         Iut = 0
@@ -67,29 +69,36 @@ class simulator(object):
         return int(S), int(L), int(Iut), int(It), int(Ia), int(Ih), int(R), int(D)
 
     def simulate(self,
-                 sim_type,
-                 interval,
-                 bed_total,
-                 bed_action=0,
-                 mask_on=False,
-                 mask_total=0,
-                 mask_quality=0,
-                 mask_lasting=48,
-                 mask_action=0,
+                 sim_type, # allocation rule
+                 interval, # number of timesteps to simulate
+                 bed_total, # total hospital beds
+                 bed_action=0, # ranking rule for beds
+                 mask_on=False, # whether masks are allocated
+                 mask_total=0, # total masks
+                 mask_quality=0, # mask effectiveness
+                 mask_lasting=48, # how long masks last
+                 mask_action=0, # ranking rule for masks
                  bed_distribute_perc=[0],
                  mask_distribute_perc=[0],
-                 bed_satisfy_perc=1,
-                 mask_satisfy_perc=1,
-                 it_move=False,
-                 is_save=False,
+                 bed_satisfy_perc=1, # satisfaction factor for beds
+                 mask_satisfy_perc=1, # satisfaction factor for masks
+                 it_move=False, # whether tested/hospital state move
+                 is_save=False, # save states to json or not
                  save_time=0):
+        '''
+        1. allocate masks
+        2. update local disease states in each region
+        3. allocate hospital beds
+        4. move people between regions
+        5. save/return new state
+        '''
         print('Simulating...')
-        #temp variables
-        S_temp = np.zeros((self.region_num, self.region_num + 1))
+        #temporary mobility arrays
+        S_temp = np.zeros((self.region_num, self.region_num + 1)) # the extra +1 column is a special return/stay bucketThe extra bucket, represents people who return to origin or should be added back
         L_temp = np.zeros((self.region_num, self.region_num + 1))
         Iut_temp = np.zeros((self.region_num, self.region_num + 1))
         if it_move:
-            It_temp = np.zeros((self.region_num, self.region_num + 1))
+            It_temp = np.zeros((self.region_num, self.region_num + 1)) # conditionally, tested infected people move
         Ia_temp = np.zeros((self.region_num, self.region_num + 1))
         R_temp = np.zeros((self.region_num, self.region_num + 1))
 
@@ -100,10 +109,10 @@ class simulator(object):
                 mask_numbers = np.zeros(self.region_num)
                 if mask_on:
                     mask_num = mask_total
-                    if sim_type == 'Mean':
+                    if sim_type == 'Mean': # evenly distribute masks across regions
                         mask_numbers = np.ones(self.region_num) * int(mask_num / self.region_num)
 
-                    elif sim_type == 'Lottery':
+                    elif sim_type == 'Lottery': # random allocation
                         order = np.array(range(self.region_num))
                         np.random.shuffle(order)
                         for i in range(self.region_num):
@@ -114,13 +123,13 @@ class simulator(object):
                                 break
 
                     else:
-                        patient_num = np.zeros(self.region_num)
-                        patient_num_order = np.zeros(self.region_num)
+                        patient_num = np.zeros(self.region_num) # current tested infected
+                        patient_num_order = np.zeros(self.region_num) # cumulative known epidemic severity
                         for i in range(self.region_num):
                             patient_num[i] = self.nodes[i].infected_t
                             patient_num_order[i] = self.nodes[i].infected_t + self.nodes[i].in_hospital + self.nodes[i].recovered + self.nodes[i].death
 
-                        if sim_type == 'Max_first':
+                        if sim_type == 'Max_first': # give masks to the worst regions first
                             order = np.argsort(-patient_num_order)
                             for i in range(self.region_num):
                                 if mask_num > 0:
@@ -129,7 +138,7 @@ class simulator(object):
                                 else:
                                     break
 
-                        elif sim_type == 'Min_first':
+                        elif sim_type == 'Min_first': # give masks to the lowest severity
                             order = np.argsort(patient_num_order)
                             for i in range(self.region_num):
                                 if mask_num > 0:
@@ -138,11 +147,11 @@ class simulator(object):
                                 else:
                                     break
 
-                        elif sim_type == 'Policy':
+                        elif sim_type == 'Policy': # vector satisfy_factor
                             mask_parameter = self.parameters[mask_action]
-                            infect_num = patient_num_order/np.mean(patient_num_order)
-                            order = np.argsort(-(mask_parameter[0]*infect_num + mask_parameter[1]*self.flow + mask_parameter[2]*self.dense))
-                            alloc_mask = np.floor(mask_num*np.array(mask_distribute_perc))
+                            infect_num = patient_num_order/np.mean(patient_num_order) # normalize regional infection severity by mean severity
+                            order = np.argsort(-(mask_parameter[0]*infect_num + mask_parameter[1]*self.flow + mask_parameter[2]*self.dense)) # rank regions by weighted score
+                            alloc_mask = np.floor(mask_num*np.array(mask_distribute_perc)) # allocates masks according to a distribution vector
                             for i in range(len(mask_distribute_perc)):
                                 mask_numbers[order[i]] = min(self.pop[order[i]], alloc_mask[i])
                                 mask_num -= mask_numbers[order[i]]
@@ -150,28 +159,28 @@ class simulator(object):
                             if mask_num > 0:
                                 temp_order = np.argsort(-np.array(mask_distribute_perc))
                                 for i in range(len(mask_distribute_perc)):
-                                    temp=min(mask_num,self.pop[order[temp_order[i]]]-mask_numbers[order[temp_order[i]]])
+                                    temp=min(mask_num,self.pop[order[temp_order[i]]]-mask_numbers[order[temp_order[i]]]) # If masks remain, it gives leftover masks to regions with larger requested shares
                                     mask_num = mask_num - temp
                                     mask_numbers[order[temp_order[i]]] += temp
                                     if mask_num == 0:
                                         break
 
                                 while mask_num > 0:
-                                    index = np.random.randint(0, self.region_num)
+                                    index = np.random.randint(0, self.region_num) # it randomly assigns individual masks
                                     if mask_numbers[index] < self.pop[index]:
                                         mask_numbers[index] += 1
                                         mask_num -= 1
                                     else:
                                         break
 
-                        elif sim_type == 'Policy_a':
+                        elif sim_type == 'Policy_a': # same satisfy_factor
                             mask_parameter = self.parameters[mask_action]
                             infect_num = patient_num_order/np.mean(patient_num_order)
                             order = np.argsort(-(mask_parameter[0] * infect_num + mask_parameter[1] * self.flow + mask_parameter[2] * self.dense))
 
                             for i in range(self.region_num):
                                 if mask_num > 0:
-                                    mask_numbers[order[i]] = min(mask_num, int(self.pop[order[i]]*mask_satisfy_perc))
+                                    mask_numbers[order[i]] = min(mask_num, int(self.pop[order[i]]*mask_satisfy_perc)) # for each region, allocate up to population_i * satisfy_factor
                                     mask_num = mask_num - mask_numbers[order[i]]
                                 else:
                                     break
@@ -189,9 +198,10 @@ class simulator(object):
                 patient_num[i] = self.nodes[i].infected_t
                 patient_num_order[i] = self.nodes[i].infected_t + self.nodes[i].in_hospital + self.nodes[i].recovered + self.nodes[i].death
                 bed_num = bed_num - self.nodes[i].in_hospital
+            # Current hospitalized patients already occupy beds, Only allocate new beds if capacity remains.
 
             if bed_num > 0:
-                if sim_type == 'Lottery' or sim_type == 'Mean':
+                if sim_type == 'Lottery' or sim_type == 'Mean': # randomize patient list then allocate beds
                     patient_list = list()
                     for i in range(self.region_num):
                         patient_list.extend([i]*int(patient_num[i]))
@@ -210,7 +220,7 @@ class simulator(object):
                     order = np.argsort(-patient_num_order)
                     for i in range(self.region_num):
                         if bed_num > 0:
-                            temp = min(bed_num, patient_num[order[i]])
+                            temp = min(bed_num, patient_num[order[i]]) # admit as many tested infected patient as possible from that region
                             self.nodes[order[i]].set_infected_t(self.nodes[order[i]].infected_t - temp)
                             self.nodes[order[i]].set_in_hospital(self.nodes[order[i]].in_hospital + temp)
                             bed_num = bed_num - temp
@@ -353,7 +363,7 @@ class simulator(object):
                     temp1 = [self.nodes[i].susceptible, self.nodes[i].latent, self.nodes[i].infected_ut, self.nodes[i].infected_t, self.nodes[i].infected_asymptomatic, self.nodes[i].in_hospital, self.nodes[i].recovered, self.nodes[i].death]
                     save.append(temp1)
                 save = np.array(save)
-                save = save.astype(np.float)
+                save = save.astype(float)
                 with open(os.path.join('../result',self.city,'result_'+str(save_time*interval+time)+'.json'), 'w') as f:
                     json.dump(save.tolist(), f)
 

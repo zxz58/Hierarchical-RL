@@ -3,6 +3,9 @@ from torch import nn,optim
 import torch.nn.functional as F
 
 class Anet(nn.Module):
+    '''
+    Anet outputs one continuous value between 0 and 1 via sigmoid. This is the satisfaction factor: how much demand to satisfy for each ranked region.
+    '''
     def __init__(self):
         super(Anet,self).__init__()
         self.cov1=nn.Conv1d(in_channels=6,out_channels=16,kernel_size=5,stride=1,padding=2,bias=True)

@@ -3,14 +3,18 @@ from torch import nn,optim
 import torch.nn.functional as F
 
 class Qnet(nn.Module):
+    '''
+    DQN for discrete ranking action
+    Qnet maps regional epidemic features to 7 output values. Each output corresponds to one ranking rule, based on combinations of infection burden, flow, and density.
+    '''
     def __init__(self):
         super(Qnet,self).__init__()
-        self.cov1=nn.Conv1d(in_channels=6,out_channels=16,kernel_size=5,stride=1,padding=2,bias=True)
+        self.cov1=nn.Conv1d(in_channels=6,out_channels=16,kernel_size=5,stride=1,padding=2,bias=True) # 6 features (SEIR states) input
         self.cov2=nn.Conv1d(in_channels=16,out_channels=32,kernel_size=5,stride=1,padding=2,bias=True)
         self.cov3=nn.Conv1d(in_channels=32,out_channels=16,kernel_size=5,stride=2,padding=0,bias=True)
         self.cov4=nn.Conv1d(in_channels=16,out_channels=4,kernel_size=5,stride=2,padding=0,bias=True)
         self.lin1=nn.Linear(in_features=664,out_features=128,bias=True)
-        self.lin2=nn.Linear(in_features=128,out_features=7,bias=True)
+        self.lin2=nn.Linear(in_features=128,out_features=7,bias=True) # 7 q-values corresponding to the length of self.parameters (ranking rule)
         self.device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.mask=torch.tensor([[0.01,0,0,0,0,0],
                                 [0,0.05,0,0,0,0],

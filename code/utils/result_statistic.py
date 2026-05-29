@@ -2,11 +2,12 @@ import numpy as np
 import json
 import os
 import xlwt
+import argparse
 
-def statistics(city,population):
+def statistics(city, population, files=None, repeat=10, window=48, output='statistics.xls'):
     path = os.path.join('../../result', city)
 
-    FILEs = []#FILEs be to analysed
+    FILEs = files or []#FILEs be to analysed
     result = dict()
 
     for filename in FILEs:
@@ -15,18 +16,19 @@ def statistics(city,population):
         temp_dict['Death'] = list()
         temp_dict['Max_Infections_increase'] = list()
         temp_dict['Max_Death_increase'] = list()
-        for I in range(10):
+        for I in range(repeat):
             with open(os.path.join(path, filename + '_' + str(I) + '.json'), 'r') as f:
                 data = np.array(json.load(f))
 
             temp_dict['Infections'].append(int(np.sum(data[-1,:,:]) - np.sum(data[-1,:, 0])))
             temp_dict['Death'].append(int(np.sum(data[-1,:, -1])))
 
-            max_death = np.sum(data[47,:, 7])
-            max_incr = np.sum(data[47,:,:]) - np.sum(data[47,:, 0])
-            for i in range(1,int(np.shape(data)[0] / 48)):
-                death = np.sum(data[i * 48 + 47,:, 7]) - np.sum(data[i * 48 - 1,:, 7])
-                incr = (np.sum(data[i * 48 + 47,:,:]) - np.sum(data[i * 48 + 47,:, 0])) - (np.sum(data[i * 48 - 1,:,:]) - np.sum(data[i * 48 - 1,:, 0]))
+            window = min(window, np.shape(data)[0])
+            max_death = np.sum(data[window - 1,:, 7])
+            max_incr = np.sum(data[window - 1,:,:]) - np.sum(data[window - 1,:, 0])
+            for i in range(1,int(np.shape(data)[0] / window)):
+                death = np.sum(data[i * window + window - 1,:, 7]) - np.sum(data[i * window - 1,:, 7])
+                incr = (np.sum(data[i * window + window - 1,:,:]) - np.sum(data[i * window + window - 1,:, 0])) - (np.sum(data[i * window - 1,:,:]) - np.sum(data[i * window - 1,:, 0]))
                 if death > max_death:
                     max_death = death
                 if incr > max_incr:
@@ -128,8 +130,19 @@ def statistics(city,population):
         worksheet.write(row + 4, col, '(%d,%d)' % (lower, upper))
         col += 1
 
-    workbook.save(os.path.join(path, 'statistics.xls'))
+    workbook.save(os.path.join(path, output))
+
+    print('Saved:' + os.path.join(path, output))
 
 if __name__ == '__main__':
     os.chdir(os.path.split(os.path.realpath(__file__))[0])
-    statistics('sample_city', 11000000)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--city', default='city_sample')
+    parser.add_argument('--population', type=int, default=11000000)
+    parser.add_argument('--files', nargs='+', default=['overall'])
+    parser.add_argument('--repeat', type=int, default=1)
+    parser.add_argument('--window', type=int, default=48)
+    parser.add_argument('--output', default='statistics.xls')
+    args = parser.parse_args()
+
+    statistics(args.city, args.population, args.files, args.repeat, args.window, args.output)

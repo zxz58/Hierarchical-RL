@@ -9,6 +9,22 @@ from simulator import simulator
 from reward_fun import reward_fun
 
 class RL_train(object):
+    '''
+    load start state
+    initialize simulator
+    initialize DQN / Actor / Critic networks
+    repeat:
+        choose bed action + mask action
+        choose bed satisfaction % + mask satisfaction %
+        run simulator
+        compute reward
+        store transition in replay buffer
+        sample mini-batch
+        update DQN + Critics
+        update Actors
+        soft-update target networks
+    save trained models
+    '''
     def __init__(self,
                 action_lr=0.001,
                 Actor_lr=0.001,
@@ -49,10 +65,12 @@ class RL_train(object):
             self.start = np.array(json.load(f))
 
         from Net.Anet import Anet
+        from Net.Cnet import Cnet
         from Net.Qnet import Qnet
         from Net.RNN import RNN
         self.region_num = 673 #Supposed to be modified according to the number of regions in the studied city.
 
+        # replay buffer initialization, store past transitions
         self.pool_pointer=0
         self.pool_count=0
         self.pool_state=np.zeros([self.pool_volume,self.region_num,8])
@@ -63,18 +81,19 @@ class RL_train(object):
         self.pool_reward=np.zeros(self.pool_volume)
         self.pool_state1=np.zeros([self.pool_volume,self.region_num,8])
 
+        # initialize current and next state
         self.current_state=self.start
         self.next_state=self.current_state
 
-        #Initialize the networks
+        # Initialize the networks
         torch.manual_seed(1234)
         torch.cuda.manual_seed(1234)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.Bed_action_eval=Qnet().to(self.device)
-        self.Bed_action_eval.train()
+        self.Bed_action_eval.train() # actively trained
         self.Bed_action_target=copy.deepcopy(self.Bed_action_eval)
-        self.Bed_action_target.eval()
+        self.Bed_action_target.eval() # slow-moving target network
         self.Bed_action_optimizer=optim.Adam(self.Bed_action_eval.parameters(), lr=self.action_lr)
 
         self.Bed_Actor_eval=Anet().to(self.device)
@@ -125,7 +144,7 @@ class RL_train(object):
 
             #sampling
             step_count=0
-            while ((not self.is_end) and step_count <= 60/(self.interval/48)):
+            while ((not self.is_end) and step_count <= 60/(self.interval/48)): # hardcoded, need to adjust here
                 #estimating the long term reward of each action
                 bed_action_out = self.Bed_action_eval(torch.FloatTensor(self.current_state[:,[1,2,3,5,6,7]]).to(self.device).unsqueeze(0))
                 mask_action_out = self.Mask_action_eval(torch.FloatTensor(self.current_state[:,[1,2,3,5,6,7]]).to(self.device).unsqueeze(0))

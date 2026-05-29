@@ -3,6 +3,9 @@ from torch import nn,optim
 import torch.nn.functional as F
 
 class Cnet(nn.Module):
+    '''
+    Cnet evaluates how good a continuous satisfaction factor is for a given epidemic state.
+    '''
     def __init__(self,region_num):
         super(Cnet,self).__init__()
         self.lin_1 = nn.Linear(in_features=1, out_features=128, bias=True)

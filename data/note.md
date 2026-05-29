@@ -9,3 +9,18 @@
 - start.json: array in size **[number of regions]\[8]**, recording the initial number of people in 8 states, each region.
 
 *The folders 'city_sample' in 'data\', 'model\' and 'result\' are empty and are used only for an example. The training and testing program can be applied to any city once the according data are prepared as above.
+
+Toy dataset files for `city_sample`:
+
+- `city_sample/start.json`: initial state, shaped `[673, 8]`.
+- `city_sample/prob.json`: deterministic no-travel movement probabilities, shaped `[48, 673, 674]`.
+- `city_sample/flow.json`: synthetic flow score per region, shaped `[673]`.
+- `city_sample/dense.json`: synthetic density score per region, shaped `[673]`.
+- `city_sample/pop_region.json`: synthetic population cap per region, shaped `[673]`.
+- `city_sample/rnn_train_0.json` and `city_sample/rnn_eval.json`: tiny sequence fixtures for `RNN_train`, shaped `[4, 673, 8]`.
+
+Regenerate them with:
+
+```bash
+python3 scripts/create_toy_dataset.py
+```
